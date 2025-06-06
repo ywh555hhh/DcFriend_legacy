@@ -1,0 +1,9 @@
+# .gitignore
+__pycache__/
+.venv/
+*.pyc
+.env
+/user_data/
+/alembic/versions/
+*.db
+*.db-journal
