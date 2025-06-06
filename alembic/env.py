@@ -3,7 +3,9 @@ import sys
 from pathlib import Path
 
 # 将项目根目录添加到 Python 路径
+# parents[1] 指的是 alembic/ 目录的上级目录，也就是项目根目录
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 # 使用 insert(0, ...) 比 append 更优先，可以避免路径冲突
 
 from logging.config import fileConfig
