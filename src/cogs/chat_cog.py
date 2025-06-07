@@ -44,6 +44,7 @@ class ChatCog(commands.Cog):
 
     # 关键点 2: 监听 on_message 事件
     @commands.Cog.listener()
+    @inject
     async def on_message(self, message: discord.Message):
         """
         当机器人能看到的任何频道收到消息时调用。
