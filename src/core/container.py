@@ -16,10 +16,9 @@ class Container(containers.DeclarativeContainer):
     """
     # 关键点 1: wiring_config 指向我们即将创建的 endpoints 模块
     wiring_config = containers.WiringConfiguration(
-        modules=[
-            "src.api.endpoints",
-            "src.cogs.chat_cog", # <--- 新增我们的 ChatCog 模块
-            # "src.cogs.persona_cog", # 如果未来有 PersonaCog 且使用 @inject
+        packages=[
+            "src.api",  # 自动 wire src/api/endpoints.py 和其他未来可能的文件
+            "src.cogs", # 自动 wire src/cogs/chat_cog.py 和其他未来所有的 cogs
         ]
     )
     # --- 核心配置 ---
