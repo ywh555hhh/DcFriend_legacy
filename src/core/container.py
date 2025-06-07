@@ -3,8 +3,11 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from src.core.config import settings
 
+from src.core.prompt_manager import PromptManager # <--- 新增
 from src.db.repositories.member_repository import MemberRepository
 from src.services.member_service import MemberService
+from src.services.gemini_client import GeminiClient # <--- 新增
+from src.services.ai_service import AIService # <--- 新增
 
 class Container(containers.DeclarativeContainer):
     """
@@ -16,6 +19,21 @@ class Container(containers.DeclarativeContainer):
 
     # --- 核心配置 ---
     config = providers.Configuration()
+
+    # --- 2. 在这里添加新的 providers ---
+
+    # Prompt 管理器
+    prompt_manager = providers.Singleton(
+        PromptManager,
+        prompts_dir=settings.PROJECT_ROOT / "src" / "prompts"
+    )
+    
+    # 底层 Gemini 客户端
+    gemini_client = providers.Singleton(
+        GeminiClient,
+        api_key=settings.GEMINI_API_KEY,
+        model_name=settings.GEMINI_MODEL_NAME,
+    )
 
     # --- 数据库层 (DB) ---
     db_engine = providers.Singleton(
@@ -43,4 +61,11 @@ class Container(containers.DeclarativeContainer):
     member_service = providers.Factory(
         MemberService,
         member_repo=member_repo,
+    )
+    
+        # 新增 AI 服务
+    ai_service = providers.Factory(
+        AIService,
+        client=gemini_client,
+        prompts=prompt_manager,
     )

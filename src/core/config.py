@@ -6,9 +6,14 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
 
 class Settings(BaseSettings):
+    """
+    一个智能的、符合最佳实践的配置管理器。
+    """
+    PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
+
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
@@ -26,7 +31,9 @@ class Settings(BaseSettings):
     
     GEMINI_MODEL_NAME: str = "gemini-1.5-flash-latest"
 
-    DATA_DIR: Path = PROJECT_ROOT / "data"
+    @property
+    def DATA_DIR(self) -> Path:
+        return self.PROJECT_ROOT / "data"
 
     @property
     def DATABASE_URL(self) -> str:

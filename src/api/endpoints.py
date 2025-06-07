@@ -8,6 +8,7 @@ from dependency_injector.wiring import inject, Provide
 from src.core.container import Container
 from src.db.models import Member
 from src.services.member_service import MemberService
+from src.services.ai_service import AIService
 
 import datetime
 
@@ -67,3 +68,42 @@ async def get_or_create_member_endpoint(
 
     member_orm: Member = await member_service.get_or_create_member(mock_user)
     return MemberResponse.model_validate(member_orm)
+
+# ... (文件顶部的所有 import 保持不变) ...
+# ... (GetOrCreateMemberRequest 和 MemberResponse 模型保持不变) ...
+# ... (router = APIRouter() 保持不变) ...
+# ... (get_or_create_member_endpoint 函数保持不变) ...
+
+
+# --- ▼▼▼ 我们要新增的代码从这里开始 ▼▼▼ ---
+
+# ---- 为 AI 服务创建新的 API 数据模型 ----
+
+class AIChatRequest(BaseModel):
+    """简单 AI 聊天的请求体"""
+    user_input: str = Field(..., description="用户发送的聊天内容", example="你好啊！")
+
+class AIChatResponse(BaseModel):
+    """AI 聊天回应的响应体"""
+    response: str
+
+
+# ---- 创建新的 AI 测试端点 ----
+
+@router.post("/ai/simple_chat", response_model=AIChatResponse, tags=["AI Service"])
+@inject
+async def simple_chat_endpoint(
+    request_data: AIChatRequest,
+    # 就像注入 MemberService 一样，我们现在注入 AIService
+    ai_service: Annotated[
+        AIService, Depends(Provide[Container.ai_service])
+    ],
+):
+    """
+    通过 API 调用 AIService 的 get_simple_chat_response 方法。
+    """
+    # 直接调用 AI 服务的高级方法
+    ai_response_text = await ai_service.get_simple_chat_response(request_data.user_input)
+    
+    # 返回结果
+    return AIChatResponse(response=ai_response_text)
