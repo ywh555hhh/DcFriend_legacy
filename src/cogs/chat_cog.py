@@ -43,8 +43,8 @@ class ChatCog(commands.Cog):
         logger.info("ChatCog initialized with injected services.")
 
     # 关键点 2: 监听 on_message 事件
-    @commands.Cog.listener()
     @inject
+    @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """
         当机器人能看到的任何频道收到消息时调用。
