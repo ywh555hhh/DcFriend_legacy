@@ -5,126 +5,127 @@ import logging
 import sys
 
 import discord
-from discord.ext import commands # <--- 确保导入 commands
+from discord.ext import commands
 
+# 导入我们自己编写的核心模块
 from src.core.config import settings
 from src.core.container import Container
 
-# -------------------- 日志配置 (推荐) --------------------
-# 配置基础日志记录器
+# -------------------- 1. 日志系统设置 (Logging Setup) --------------------
+# 这是专业的应用开发中的良好实践。
+# 它能让我们在控制台看到清晰、格式化的日志输出，而不是简单的 print()。
+# 这对于调试和监控机器人的运行状态至关重要。
 logging.basicConfig(
-    # 设置日志级别，优先从 settings 中读取，否则默认为 INFO
-    level=settings.LOG_LEVEL if hasattr(settings, 'LOG_LEVEL') else logging.INFO,
-    # 日志格式：时间 [级别] 名称：消息
+    # 设置日志级别，可以从配置中读取，如果配置中没有则默认为 INFO
+    level=getattr(settings, 'LOG_LEVEL', 'INFO'),
+    # 设置日志格式：时间 [日志级别] 模块名：日志消息
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    # 时间格式
+    # 设置时间格式
     datefmt="%Y-%m-%d %H:%M:%S",
-    # 日志输出流，默认为标准输出 (控制台)
+    # 将日志输出到标准输出（控制台）
     stream=sys.stdout,
 )
-# 获取当前模块的 logger 实例
+# 获取一个针对当前文件 (__main__) 的日志记录器实例
 logger = logging.getLogger(__name__)
 
 
-# -------------------- Bot Intents (机器人意图) --------------------
-# Intents 用于声明你的机器人需要从 Discord 网关接收哪些事件。
-# 默认情况下，大多数特权 Intents (privileged intents) 是关闭的。
-intents = discord.Intents.default()  # 获取默认的 Intents 集合
-intents.message_content = True       # 启用消息内容 Intent，允许机器人读取消息内容 (特权)
-intents.members = True               # 启用服务器成员 Intent，允许机器人接收成员加入/离开/更新等事件 (特权)
-# 注意：特权 Intents (message_content, members, presence) 需要在 Discord Developer Portal 中为你的应用开启。
+# -------------------- 2. 定义机器人的意图 (Bot Intents) --------------------
+# Intents 像是一份“订阅清单”，我们告诉 Discord 我们关心哪些类型的事件。
+# 如果不订阅，Discord 就不会把相应的事件推送给我们，以节省资源。
+intents = discord.Intents.default()
+# 订阅“消息内容”事件。这是让机器人能够读取消息文本所必需的，需要在开发者门户网站手动开启。
+intents.message_content = True
+# 订阅“服务器成员”事件。这有助于机器人获取成员加入/离开/更新等信息。
+intents.members = True
 
 
-# -------------------- Bot 初始化 (确保使用 commands.Bot) --------------------
-# 使用 discord.ext.commands.Bot 类来创建机器人实例，它提供了命令处理框架。
+# -------------------- 3. 初始化机器人核心 (Bot Initialization) --------------------
+# 我们使用 `commands.Bot`，这是 `discord.py` 提供的功能更全面的客户端类。
+# 它不仅能处理事件，还内置了对命令（传统命令和应用命令）的支持。
 bot = commands.Bot(
-    # command_prefix 是传统文本命令的前缀。
-    # commands.when_mentioned_or("!") 允许机器人响应提及 (@BotName) 或 "!" 作为命令前缀。
-    # 如果你的 Cog 主要依赖事件监听器 (如 on_message) 和/或应用命令 (斜杠命令)，
-    # 并且不使用传统文本命令，可以将 command_prefix 设置为一个几乎不会被用户触发的值，
-    # 或者根据需要选择合适的前缀。
+    # 设置命令前缀。即使我们主要使用事件监听器，这也是一个好的实践。
+    # `when_mentioned_or` 允许用户通过 @机器人 或者 "!" 来触发命令。
     command_prefix=commands.when_mentioned_or("!"),
-    intents=intents,  # 传递配置好的 Intents
-    description="DcFriend Legacy Bot (using commands.Bot)", # 机器人的描述，可选
-    # help_command=None, # 如果你想完全自定义帮助命令，可以设置为 None，然后自己实现。
+    intents=intents,
+    description="一个拥有长期记忆的社群伙伴。"
 )
-# 重要说明：discord.py v2.x 中，discord.ext.commands.Bot 已经能够很好地处理 Cogs 和应用命令。
-# 使用 commands.Bot 不会影响你使用这些现代功能。
 
-# -------------------- 依赖注入容器初始化 --------------------
-container = Container() # 实例化依赖注入容器
-# 从 Pydantic Settings 模型 (settings) 加载配置到容器的配置提供者中
-# settings.model_dump() 将 Pydantic 模型转换为字典
-container.config.from_dict(settings.model_dump())
 
-# -------------------- 关键：连接容器 (Wiring) --------------------
-# `container.wire()` 是 `dependency-injector` 库的核心步骤。
-# 它会扫描指定的模块和包，查找 `@inject` 装饰器和 `Provide` 占位符。
-# 当找到时，它会将 `Provide` 占位符“连接”到容器中相应的服务实例。
-# - `modules=[__name__]`: 将当前模块 (main.py) 添加到扫描列表。
-#   如果 main.py 中有函数或类使用了 @inject，这将确保它们被正确处理。
-# - `packages=["src.cogs"]`: 将 `src.cogs` 包添加到扫描列表。
-#   这意味着 `src.cogs` 目录下的所有模块 (如 `chat_cog.py`) 都会被扫描。
-#   这对于 Cogs 中的 `__init__` 方法或命令方法中通过 `@inject` 注入依赖至关重要。
-# 此步骤必须在加载 Cogs (extensions) 之前完成，因为 Cogs 的初始化过程可能就需要注入的依赖。
-# 如果不调用 .wire()，ChatCog 在实例化时接收到的 member_service 将是
-# 一个 Provide 对象，而不是 MemberService 的实例，从而导致 AttributeError。
+# -------------------- 4. 依赖注入容器的初始化与接线 (DI Container & Wiring) --------------------
+# 这是我们整个架构的灵魂所在，连接后端服务与 Discord 前端的桥梁。
 
-import src.cogs.chat_cog # <--- 显式导入，确保模块先被加载
-container.wire(modules=[src.cogs.chat_cog]) # <--- 直接 wire 模块对象本身
+# 步骤 4a: 创建容器实例。这是我们所有服务的“总装车间”。
+container = Container()
 
-# -------------------- Cog (扩展模块) 发现与加载 --------------------
-# INITIAL_EXTENSIONS 列出了机器人启动时需要加载的 Cog 的模块路径。
-# 路径格式是相对于项目根目录的点分路径，例如 "src.cogs.chat_cog" 指向 src/cogs/chat_cog.py。
+# 步骤 4b: 执行“接线”(Wiring)。这是整个 DI 流程中最关键的一步。
+# 它告诉容器：“请扫描以下模块，并准备好为其中被 @inject 装饰的函数/方法提供依赖。”
+# 这个操作必须在加载这些模块 (`load_extension`) 之前完成。
+container.wire(modules=[
+    "src.cogs.chat_cog",
+    # 如果未来有更多 cogs，在这里添加它们的路径，例如："src.cogs.admin_cog"
+])
+
+# 步骤 4c: 将容器实例附加到 bot 对象上。
+# 这是一个非常优雅的技巧，使得我们可以在任何能访问到 `bot` 对象的地方
+# (比如在 Cog 的 setup 函数中) 轻松地取回我们的容器。
+bot.container = container
+
+
+# -------------------- 5. 加载扩展模块 (Cogs) --------------------
+# Cogs 是 `discord.py` 用来组织代码的最佳方式。我们将不同的功能放在不同的 Cog 文件中。
+
+# 定义一个初始要加载的 Cog 列表。
 INITIAL_EXTENSIONS = [
     "src.cogs.chat_cog",
-    # "src.cogs.another_cog", # 如果有其他 Cog，也在这里添加
 ]
 
 async def load_extensions():
-    """异步函数，用于加载所有在 INITIAL_EXTENSIONS 中定义的 Cog。"""
+    """一个异步函数，负责加载所有在 INITIAL_EXTENSIONS 中定义的 Cog。"""
     for extension_path in INITIAL_EXTENSIONS:
         try:
-            # `bot.load_extension()` 异步加载指定的 Cog。
-            # Cog 内部通常有一个名为 `setup(bot)` 的函数，用于将 Cog 注册到机器人。
+            # `bot.load_extension` 会导入指定的模块，并调用其底部的 `setup` 函数。
             await bot.load_extension(extension_path)
-            logger.info(f"成功加载扩展：{extension_path}")
+            logger.info(f"成功加载扩展模块：{extension_path}")
         except commands.ExtensionError as e:
-            # 如果加载过程中发生错误 (如 Cog 不存在、setup 函数错误等)，则记录错误。
-            logger.error(f"加载扩展 {extension_path} 失败：{e}", exc_info=True)
+            # 如果加载失败，打印详细的错误信息，但程序不会崩溃。
+            logger.error(f"加载扩展模块失败 {extension_path}: {e}", exc_info=True)
 
-# -------------------- Bot 事件处理 --------------------
+
+# -------------------- 6. 定义机器人的核心事件回调 (Bot Events) --------------------
+
 @bot.event
 async def on_ready():
-    """当机器人成功连接到 Discord 并准备就绪时触发此事件。"""
-    logger.info(f"机器人已登录为 {bot.user.name} (ID: {bot.user.id})")
+    """当机器人成功连接到 Discord 并准备好工作时，这个事件会被触发。"""
+    logger.info(f"机器人已登录：{bot.user.name} (ID: {bot.user.id})")
     logger.info(f"已连接到 {len(bot.guilds)} 个服务器。")
-    logger.info(f"Discord.py 版本：{discord.__version__}")
-    logger.info("DcFriend Legacy 已准备就绪！")
-    # 设置机器人的在线状态和正在玩的游戏/活动
-    await bot.change_presence(activity=discord.Game(name="with your legacy"))
+    logger.info(f"discord.py 版本：{discord.__version__}")
+    logger.info("看板娘已准备就绪，开始服务！")
+    # 设置机器人的“正在玩”状态
+    await bot.change_presence(activity=discord.Game(name="观察世界"))
 
-# -------------------- 主程序执行逻辑 --------------------
+
+# -------------------- 7. 主程序执行入口 (Main Execution) --------------------
+
 async def main_async():
-    """主异步函数，负责初始化和启动机器人。"""
-    await load_extensions() # 首先加载所有定义的 Cogs
-    # 使用从 settings 中获取的 BOT_TOKEN 启动机器人并连接到 Discord
+    """异步主函数，封装了启动逻辑。"""
+    # 在启动机器人之前，先加载所有扩展模块。
+    await load_extensions()
+    # 使用从 settings 中读取的 token 来启动机器人。
+    # 这会开始连接到 Discord 的 WebSocket，并进入事件监听循环。
     await bot.start(settings.BOT_TOKEN)
 
 def run_bot():
-    """同步的启动函数，用于运行异步的 main_async 函数。"""
+    """同步的启动器函数，负责运行异步主函数并处理异常。"""
     try:
-        # `asyncio.run()` 是在同步代码中运行异步函数的标准方式。
+        # 运行异步主程序
         asyncio.run(main_async())
     except KeyboardInterrupt:
-        # 当用户按下 Ctrl+C 时，优雅地关闭机器人。
+        # 优雅地处理用户按 Ctrl+C 的情况
         logger.info("用户请求关闭机器人。正在退出...")
     except Exception as e:
-        # 捕获并记录在机器人运行过程中发生的任何未处理的顶层异常。
-        logger.error(f"发生未处理的异常：{e}", exc_info=True)
+        # 捕获其他所有意外的错误，并记录日志。
+        logger.critical(f"发生未处理的严重异常：{e}", exc_info=True)
 
+# 经典的 Python 入口点检查
 if __name__ == "__main__":
-    # Python 脚本的入口点。
-    # 当直接运行此文件时 (python main.py)，`__name__` 的值为 "__main__"，
-    # 从而执行 run_bot() 函数启动机器人。
     run_bot()
