@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = Field(..., alias='GOOGLE_AI_KEY')
     
     GEMINI_MODEL_NAME: str = "gemini-1.5-flash-latest"
+    DB_ECHO: bool = Field(default=False, alias='DATABASE_ECHO')
+    LOG_LEVEL: str = Field(default="INFO", alias='APP_LOG_LEVEL')
 
     @property
     def DATA_DIR(self) -> Path:

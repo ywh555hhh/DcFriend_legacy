@@ -15,8 +15,13 @@ class Container(containers.DeclarativeContainer):
     这是一个单一、扁平的容器，负责定义所有组件及其依赖关系。
     """
     # 关键点 1: wiring_config 指向我们即将创建的 endpoints 模块
-    wiring_config = containers.WiringConfiguration(modules=["src.api.endpoints"])
-
+    wiring_config = containers.WiringConfiguration(
+        modules=[
+            "src.api.endpoints",
+            "src.cogs.chat_cog", # <--- 新增我们的 ChatCog 模块
+            # "src.cogs.persona_cog", # 如果未来有 PersonaCog 且使用 @inject
+        ]
+    )
     # --- 核心配置 ---
     config = providers.Configuration()
 
@@ -38,8 +43,8 @@ class Container(containers.DeclarativeContainer):
     # --- 数据库层 (DB) ---
     db_engine = providers.Singleton(
         create_async_engine,
-        url=settings.DATABASE_URL, # <--- 从智能的 settings 对象获取 URL
-        echo=True, # 直接硬编码为 True，或者也可以从 settings 获取
+        url=settings.DATABASE_URL,
+        echo=settings.DB_ECHO if hasattr(settings, 'DB_ECHO') else False, # 从配置读取或默认 False
     )
 
     db_session_factory = providers.Singleton(
