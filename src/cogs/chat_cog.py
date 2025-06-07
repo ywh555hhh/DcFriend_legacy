@@ -27,6 +27,16 @@ class ChatCog(commands.Cog):
         member_service: MemberService = Provide[Container.member_service],
         ai_service: AIService = Provide[Container.ai_service],
     ):
+        
+        # --- 新增调试日志 ---
+        logger.info(f"ChatCog.__init__ called.")
+        logger.info(f"  Is 'member_service' a Provide object on entry? {isinstance(member_service, Provide)}") # 更直接的检查
+        logger.info(f"  Type of 'member_service' param on entry: {type(member_service)}")
+        logger.info(f"  Value of 'member_service' param on entry: {member_service}")
+        logger.info(f"  Is 'ai_service' a Provide object on entry? {isinstance(ai_service, Provide)}") # 更直接的检查
+        logger.info(f"  Type of 'ai_service' param on entry: {type(ai_service)}")
+        # --- 结束新增调试日志 ---
+
         self.bot = bot
         self.member_service = member_service
         self.ai_service = ai_service
