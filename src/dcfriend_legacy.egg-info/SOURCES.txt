@@ -10,6 +10,10 @@ src/core/config.py
 src/db/__init__.py
 src/db/database.py
 src/db/models.py
+src/db/session.py
+src/db/repositories/__init__.py
+src/db/repositories/event_repository.py
+src/db/repositories/member_repository.py
 src/dcfriend_legacy.egg-info/PKG-INFO
 src/dcfriend_legacy.egg-info/SOURCES.txt
 src/dcfriend_legacy.egg-info/dependency_links.txt
@@ -17,4 +21,5 @@ src/dcfriend_legacy.egg-info/requires.txt
 src/dcfriend_legacy.egg-info/top_level.txt
 src/services/__init__.py
 src/services/ai_service.py
+src/services/member_service.py
 src/services/memory_service.py
