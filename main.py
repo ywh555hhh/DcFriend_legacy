@@ -69,11 +69,9 @@ container.config.from_dict(settings.model_dump())
 # 此步骤必须在加载 Cogs (extensions) 之前完成，因为 Cogs 的初始化过程可能就需要注入的依赖。
 # 如果不调用 .wire()，ChatCog 在实例化时接收到的 member_service 将是
 # 一个 Provide 对象，而不是 MemberService 的实例，从而导致 AttributeError。
-container.wire(
-    modules=[__name__],    # 当前模块
-    packages=["src.cogs"]  # 存放 Cogs 的包
-)
 
+import src.cogs.chat_cog # <--- 显式导入，确保模块先被加载
+container.wire(modules=[src.cogs.chat_cog]) # <--- 直接 wire 模块对象本身
 
 # -------------------- Cog (扩展模块) 发现与加载 --------------------
 # INITIAL_EXTENSIONS 列出了机器人启动时需要加载的 Cog 的模块路径。
