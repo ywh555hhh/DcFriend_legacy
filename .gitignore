@@ -7,3 +7,5 @@ __pycache__/
 /alembic/versions/
 *.db
 *.db-journal
+# Python build artifacts
+*.egg-info/
