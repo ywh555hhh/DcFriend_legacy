@@ -16,7 +16,7 @@ from src.core.container import Container
 # 这对于调试和监控机器人的运行状态至关重要。
 logging.basicConfig(
     # 设置日志级别，可以从配置中读取，如果配置中没有则默认为 INFO
-    level=getattr(settings, 'LOG_LEVEL', 'INFO'),
+    level=getattr(settings, "LOG_LEVEL", "INFO"),
     # 设置日志格式：时间 [日志级别] 模块名：日志消息
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     # 设置时间格式
@@ -40,7 +40,7 @@ async def main():
     # 容器负责管理我们应用中所有服务的生命周期和依赖关系。
     logger.info("创建依赖注入容器...")
     container = Container()
-    
+
     # 根据 dependency-injector 文档，如果容器类中定义了 wiring_config，
     # 实例化容器时会自动触发 .wire()。但如果没有定义，或者需要更灵活的控制，
     # 手动调用 .wire() 是必须的。我们的场景需要在加载 Cogs 前手动调用。
@@ -56,13 +56,13 @@ async def main():
     logger.info("定义机器人意图 (Intents)...")
     intents = discord.Intents.default()
     intents.message_content = True  # 订阅消息内容事件，以便机器人能读取消息
-    intents.members = True          # 订阅服务器成员事件，例如新成员加入
+    intents.members = True  # 订阅服务器成员事件，例如新成员加入
 
     logger.info("创建 commands.Bot 实例...")
     bot = commands.Bot(
         command_prefix=commands.when_mentioned_or("!"),
         intents=intents,
-        description="一个拥有长期记忆的社群伙伴。"
+        description="一个拥有长期记忆的社群伙伴。",
     )
 
     # 步骤 4 (可选但推荐): 将容器附加到 bot 实例上。
@@ -79,17 +79,6 @@ async def main():
             "src.cogs.chat_cog"
             # 未来有更多 Cogs, 在这里添加它们的路径，例如："src.cogs.admin_cog"
         ]
-        
-        # -------------------- 【关键修复点：执行织入 (Wiring)】 --------------------
-        # 在加载任何 Cog 之前，必须先调用 `container.wire()`。
-        # 这个操作会遍历指定的模块（这里是 `extensions_to_load` 列表中的模块），
-        # 找到所有被 `@inject` 装饰的函数/方法，并修改它们，
-        # 使得 `Provide[...]` 占位符在函数被调用时能被替换成真正的服务实例。
-        # 如果不执行这一步，Cog 在初始化时接收到的将是 `Provide` 对象本身，而不是服务。
-        logger.info(f"正在为模块 {extensions_to_load} 执行依赖注入织入 (wiring)...")
-        container.wire(modules=extensions_to_load)
-        logger.info("织入操作完成。现在可以安全加载扩展了。")
-        # --------------------------------------------------------------------------
 
         logger.info(f"准备加载扩展模块：{extensions_to_load}")
         # 循环加载所有定义的扩展。
@@ -103,10 +92,11 @@ async def main():
             except Exception as e:
                 # 如果某个 Cog 加载失败，记录详细错误但不会让整个程序崩溃。
                 logger.error(f"加载扩展模块失败 {extension}.", exc_info=e)
-        
+
         logger.info("所有扩展已加载。准备启动并连接到 Discord...")
         # 启动机器人并使用从 settings 中读取的 token 进行连接。
         await bot.start(settings.BOT_TOKEN)
+
 
 # -------------------- 3. 程序入口点 (Script Entrypoint) --------------------
 if __name__ == "__main__":
@@ -119,7 +109,9 @@ if __name__ == "__main__":
         sys.exit(0)
     except discord.LoginFailure:
         # 捕获特定的登录失败异常，给出更明确的错误信息。
-        logger.critical("机器人 Token 无效或不正确，登录失败。请检查你的 .env 文件中的 BOT_TOKEN。")
+        logger.critical(
+            "机器人 Token 无效或不正确，登录失败。请检查你的 .env 文件中的 BOT_TOKEN。"
+        )
         sys.exit(1)
     except Exception as e:
         # 捕获在主函数之外发生的、未被处理的严重异常。
