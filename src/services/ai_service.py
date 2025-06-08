@@ -79,4 +79,4 @@ class AIService:
         print(final_prompt)
         print("=" * 60)
 
-        return await self.llm_client.get_text_response(final_prompt)
+        return await self.llm_client.generate_text(final_prompt)
