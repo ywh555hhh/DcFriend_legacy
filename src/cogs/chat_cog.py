@@ -1,13 +1,10 @@
 import asyncio
 import logging
-
 import discord
 from discord.ext import commands
 
-# 我们直接从各自的模块导入服务和模型类，用于类型提示和实例化
-from src.db.models import Member as MemberModel
+# 我们只需要导入 AIService 的类型提示，因为这是我们唯一的直接依赖
 from src.services.ai_service import AIService
-from src.services.member_service import MemberService
 
 # 获取此模块的日志记录器
 logger = logging.getLogger(__name__)
@@ -15,139 +12,113 @@ logger = logging.getLogger(__name__)
 
 class ChatCog(commands.Cog):
     """
-    处理与聊天相关的交互，特别是对机器人的直接提及。
-    这个 Cog 的依赖项由其 setup 函数在加载时注入。
+    【交互层】处理与聊天相关的交互，特别是对机器人的直接提及。
+
+    这个 Cog 的核心职责是作为 Discord 事件与内部服务之间的“桥梁”。
+    它监听 `on_message` 事件，进行最基本的过滤，然后将 `discord.Message` 对象
+    直接传递给 `AIService` 进行处理。它不包含任何复杂的业务逻辑。
     """
 
-    # 构造函数现在非常“干净”，它只接收已经准备好的服务实例。
-    # 它不关心这些服务是如何创建的，只关心它们的类型和功能。
-    def __init__(
-        self,
-        bot: commands.Bot,
-        member_service: MemberService,
-        ai_service: AIService,
-    ):
+    # 构造函数非常“干净”，它只接收已经准备好的 AIService 实例。
+    def __init__(self, bot: commands.Bot, ai_service: AIService):
         """
         初始化 ChatCog。
 
         Args:
             bot (commands.Bot): 当前的机器人实例。
-            member_service (MemberService): 用于处理成员数据的服务。
-            ai_service (AIService): 用于与大语言模型交互的服务。
+            ai_service (AIService): 用于处理所有 AI 相关业务逻辑的核心服务。
         """
         self.bot = bot
-        self.member_service = member_service
         self.ai_service = ai_service
-
-        # 可以在这里添加一些断言或类型检查，以确保依赖项被正确传入
-        if not isinstance(member_service, MemberService):
-            raise TypeError(f"Expected MemberService, but got {type(member_service)}")
-        if not isinstance(ai_service, AIService):
-            raise TypeError(f"Expected AIService, but got {type(ai_service)}")
-
-        logger.info("ChatCog instance created with explicitly passed service instances.")
+        logger.info(
+            "ChatCog instance has been successfully created and wired with AIService."
+        )
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """
         监听所有消息，并对提及机器人的消息作出响应。
         """
-        # 1. 过滤掉不应处理的消息
-        if message.author == self.bot.user or message.author.bot:
+        # 1. 【过滤】快速过滤掉无需处理的消息，避免不必要的计算。
+        # - 忽略机器人自身或其他机器人发出的消息。
+        # - 只响应在频道中被明确 @提及 的消息。
+        if message.author.bot or not self.bot.user.mentioned_in(message):
             return
 
-        # 2. 检查机器人是否被提及或是否为私聊
-        # bot.user.mentioned_in(message) 是一个比字符串检查更可靠的方法
-        is_mentioned = self.bot.user.mentioned_in(message)
-        is_private_message = isinstance(message.channel, discord.DMChannel)
-
-        if not (is_mentioned or is_private_message):
-            return
-
+        # 日志记录：记录收到了需要处理的消息
         logger.info(
-            f"Received relevant message from {message.author.name} "
-            f"in {'DM' if is_private_message else '#' + message.channel.name}: "
-            f"'{message.content}'"
+            f"Received mention from '{message.author.name}' in channel '{message.channel}': '{message.clean_content[:100]}'"
         )
 
-        # 3. 获取或创建数据库中的成员记录
-        try:
-            db_member: MemberModel = await self.member_service.get_or_create_member(message.author)
-            logger.info(f"Ensured member exists in DB: {db_member.name} (ID: {db_member.id})")
-        except Exception as e:
-            logger.error(f"Error getting/creating member {message.author.name}: {e}", exc_info=True)
-            await message.reply("抱歉，我在同步你的信息时遇到了点小麻烦，请稍后再试。")
-            return
-
-        # 4. 清理用户输入，移除提及部分
-        # 使用 discord.py 提供的工具类来移除提及，更健壮
-        user_input = discord.utils.remove_markdown(message.content)
-        # 进一步清理可能存在的机器人用户名提及
-        user_input = user_input.replace(f'@{self.bot.user.name}', '').strip()
-
-        if not user_input:
-            # 如果用户只@了机器人而没说别的话
-            await message.reply("你好呀！有什么可以帮你的吗？或者想聊点什么？")
-            return
-
-        # 5. 调用 AI 服务并处理响应
+        # 2. 【委派】将任务完全委托给核心服务层。
+        # 我们将整个 `message` 对象传递过去，因为服务层需要从中提取
+        # 作者信息、频道历史（短期记忆）等多种上下文。
         try:
             # 发送 "typing..." 指示器，提升用户体验
             async with message.channel.typing():
-                logger.debug(f"Sending to AI service for {db_member.name}: '{user_input}'")
-                ai_response = await self.ai_service.get_simple_chat_response(user_input)
-                logger.info(f"AI response for {db_member.name}: '{ai_response[:100]}...'")
+                # 调用核心 AI 服务来生成回复
+                ai_response = await self.ai_service.generate_response(message)
+                logger.info(
+                    f"AI response generated for '{message.author.name}': '{ai_response[:100]}...'"
+                )
 
-            # 6. 发送回复
+            # 3. 【回复】处理并发送 AI 服务的返回结果。
             if ai_response:
-                # 处理 Discord 消息长度限制 (2000 字符)
+                # 优雅地处理 Discord 消息长度限制 (2000 字符)
                 if len(ai_response) > 2000:
-                    logger.warning("AI response is too long, splitting into multiple messages.")
+                    logger.warning(
+                        "AI response is too long, splitting into multiple messages."
+                    )
                     # 分多条消息发送
                     for i in range(0, len(ai_response), 2000):
-                        await message.reply(ai_response[i:i+2000])
-                        await asyncio.sleep(0.5) # 短暂延时以避免速率限制
+                        await message.reply(ai_response[i : i + 2000])
+                        # 在消息之间添加一个短暂延时，可以改善阅读体验并避免潜在的速率限制
+                        await asyncio.sleep(0.5)
                 else:
                     await message.reply(ai_response)
             else:
+                # 如果 AI 服务因某种原因返回了空响应，也给用户一个反馈
                 logger.warning("AI service returned an empty or null response.")
                 await message.reply("我好像没什么好说的了，换个话题试试？")
 
         except Exception as e:
-            logger.error(f"Error during AI processing or sending reply: {e}", exc_info=True)
-            await message.reply("呜...我的大脑好像短路了，暂时不能回复你。请稍后再试试吧！")
+            # 捕获服务层可能抛出的任何异常，并向用户发送友好的错误消息
+            logger.error(
+                f"An uncaught exception occurred while processing message from '{message.author.name}': {e}",
+                exc_info=True,
+            )
+            await message.reply(
+                "呜...我的大脑好像短路了，暂时不能回复你。请稍后再试试吧！"
+            )
 
 
 async def setup(bot: commands.Bot):
     """
-    此函数是 discord.py 加载扩展时的入口点。
-    它负责从附加到 bot 的容器中解析服务，并用这些服务来实例化 Cog。
-    这是依赖注入发生的核心位置。
+    【依赖注入入口】此函数是 discord.py 加载扩展时的入口点。
+
+    它负责从附加到 bot 的容器中解析出 `AIService`，并用它来实例化 `ChatCog`。
+    这是我们项目中“手动依赖注入”模式的核心实践。
     """
     logger.info("Setting up ChatCog...")
 
+    # 从 bot 对象上获取在 main.py 中附加的全局容器
     container = bot.container
     if not container:
-        raise RuntimeError("Dependency Injection Container has not been attached to the bot instance.")
+        raise RuntimeError("Dependency Injection Container not found on bot instance.")
 
     try:
-        # 从容器中显式地解析（创建）我们需要的服务实例
-        member_service_instance = container.member_service()
+        # 从容器中显式地解析（创建）我们需要的 AIService 实例
         ai_service_instance = container.ai_service()
 
-        # 创建 ChatCog 实例，并将解析出的服务作为参数传入
-        cog_instance = ChatCog(
-            bot=bot,
-            member_service=member_service_instance,
-            ai_service=ai_service_instance
-        )
-
         # 将完全配置好的 Cog 添加到机器人中
-        await bot.add_cog(cog_instance)
-        logger.info("ChatCog has been successfully created and added to the bot.")
+        await bot.add_cog(ChatCog(bot=bot, ai_service=ai_service_instance))
+        logger.info("ChatCog has been successfully set up and added to the bot.")
 
     except Exception as e:
         # 如果在解析或实例化过程中出现任何问题，我们能在这里捕获到清晰的错误
-        logger.critical("Failed to setup ChatCog due to a dependency resolution or instantiation error.", exc_info=e)
+        logger.critical(
+            f"Failed to setup ChatCog due to a dependency resolution or instantiation error.",
+            exc_info=True,
+        )
         # 重新抛出异常，这将导致 `load_extension` 失败，以便在主日志中清晰地看到问题
         raise

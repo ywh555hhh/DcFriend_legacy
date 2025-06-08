@@ -2,15 +2,15 @@ README.md
 pyproject.toml
 src/__init__.py
 src/bot.py
-src/containers.py
 src/api/endpoints.py
 src/cogs/__init__.py
 src/cogs/chat_cog.py
 src/cogs/conversation.py
 src/core/__init__.py
+src/core/character_manager.py
+src/core/character_model.py
 src/core/config.py
 src/core/container.py
-src/core/prompt_manager.py
 src/db/__init__.py
 src/db/models.py
 src/db/session.py
@@ -27,3 +27,5 @@ src/services/ai_service.py
 src/services/gemini_client.py
 src/services/member_service.py
 src/services/memory_service.py
+src/services/memory/abstract_memory_service.py
+src/services/memory/hardcoded_memory_service.py
