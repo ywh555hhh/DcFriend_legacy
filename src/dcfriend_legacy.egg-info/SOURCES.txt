@@ -29,3 +29,4 @@ src/services/member_service.py
 src/services/memory_service.py
 src/services/memory/abstract_memory_service.py
 src/services/memory/hardcoded_memory_service.py
+tests/test_bot.py
