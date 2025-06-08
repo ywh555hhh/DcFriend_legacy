@@ -32,25 +32,23 @@ logger = logging.getLogger(__name__)
 async def main():
     """
     机器人主程序入口。
-    严格遵循 dependency-injector 和 discord.py 的官方最佳实践。
+    此函数负责初始化所有组件、配置并启动机器人。
     """
     logger.info("开始初始化机器人...")
 
     # 步骤 1: 创建依赖注入容器实例。
     # 容器负责管理我们应用中所有服务的生命周期和依赖关系。
+    # 它在 src/core/container.py 中定义。
     logger.info("创建依赖注入容器...")
     container = Container()
 
-    # 根据 dependency-injector 文档，如果容器类中定义了 wiring_config，
-    # 实例化容器时会自动触发 .wire()。但如果没有定义，或者需要更灵活的控制，
-    # 手动调用 .wire() 是必须的。我们的场景需要在加载 Cogs 前手动调用。
-    # 我们将在加载扩展前进行此操作。
+    # 【架构核心】我们不使用 @inject 自动织入 (wiring)。
+    # 而是采用更健壮的手动注入模式，详见步骤 4 和各个 Cog 的 setup 函数。
 
-    # 步骤 2: 从我们的配置系统加载配置到容器中。
-    # (这一步在你的 container.py 中已经通过 pydantic-settings 自动完成了)
-    # 如果你的 container.py 依赖于外部调用，可以取消下面这行注释：
-    # logger.info("从 settings 加载配置到容器...")
-    # container.config.from_pydantic(settings)
+    # 步骤 2: (信息) 配置加载。
+    # pydantic-settings 会在导入 `src.core.config.settings` 时自动从 .env 文件加载配置。
+    # 我们的容器 (`Container`) 内部已经配置为直接使用这个 settings 对象。
+    # 因此，此处无需进行显式的配置加载操作。
 
     # 步骤 3: 定义并创建机器人实例。
     logger.info("定义机器人意图 (Intents)...")
@@ -60,24 +58,27 @@ async def main():
 
     logger.info("创建 commands.Bot 实例...")
     bot = commands.Bot(
+        # 设置命令前缀，这里是 "!" 或 @机器人
         command_prefix=commands.when_mentioned_or("!"),
         intents=intents,
         description="一个拥有长期记忆的社群伙伴。",
     )
 
-    # 步骤 4 (可选但推荐): 将容器附加到 bot 实例上。
-    # 这使得在项目的任何地方（特别是测试和 Cogs 中）都可以通过 `bot.container` 方便地访问到容器。
-    # 这是一种服务定位器模式的便利补充，但不替代依赖注入。
+    # 步骤 4: 【关键】将容器附加到 bot 实例上。
+    # 这是实现我们“手动注入”模式的桥梁。
+    # 它使得在每个 Cog 的 setup 函数中，我们都可以通过 `bot.container` 访问到唯一的容器实例，
+    # 从而解析出该 Cog 所需的服务。
     bot.container = container
-    logger.info("容器已附加到 bot 实例。")
+    logger.info("依赖注入容器已附加到 bot 实例。")
 
     # 步骤 5: 启动机器人，并使用 `async with` 来优雅地处理其生命周期。
     # `async with bot:` 会自动处理登录、连接保持和最终的登出清理。
     async with bot:
         # 定义需要加载的扩展模块 (Cogs) 列表。
+        # 添加新功能模块时，只需在此列表中增加其路径即可。
         extensions_to_load = [
             "src.cogs.chat_cog"
-            # 未来有更多 Cogs, 在这里添加它们的路径，例如："src.cogs.admin_cog"
+            # 例如："src.cogs.admin_cog", "src.cogs.music_cog"
         ]
 
         logger.info(f"准备加载扩展模块：{extensions_to_load}")
@@ -85,12 +86,13 @@ async def main():
         for extension in extensions_to_load:
             try:
                 # `load_extension` 会导入模块并调用其 `setup` 函数。
-                # 由于我们已经完成了 wiring，`setup` 函数在创建 Cog 实例时，
-                # 依赖项将被正确注入。
+                # 在我们的架构中，每个 Cog 的 `setup` 函数负责从 `bot.container`
+                # 解析依赖并实例化该 Cog。
                 await bot.load_extension(extension)
                 logger.info(f"成功加载扩展模块：{extension}")
             except Exception as e:
-                # 如果某个 Cog 加载失败，记录详细错误但不会让整个程序崩溃。
+                # 如果某个 Cog 加载失败，记录详细错误但不会让整个程序崩溃，
+                # 以便调试和不影响其他功能的运行。
                 logger.error(f"加载扩展模块失败 {extension}.", exc_info=e)
 
         logger.info("所有扩展已加载。准备启动并连接到 Discord...")
@@ -108,12 +110,12 @@ if __name__ == "__main__":
         logger.info("用户请求关闭机器人。程序已终止。")
         sys.exit(0)
     except discord.LoginFailure:
-        # 捕获特定的登录失败异常，给出更明确的错误信息。
+        # 捕获特定的登录失败异常，给出更明确、可操作的错误信息。
         logger.critical(
             "机器人 Token 无效或不正确，登录失败。请检查你的 .env 文件中的 BOT_TOKEN。"
         )
         sys.exit(1)
     except Exception as e:
-        # 捕获在主函数之外发生的、未被处理的严重异常。
+        # 捕获在主函数之外发生的、未被处理的严重异常，确保问题能被记录。
         logger.critical(f"在启动过程中发生未处理的严重异常。", exc_info=e)
         sys.exit(1)
