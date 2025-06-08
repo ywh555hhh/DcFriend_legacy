@@ -3,6 +3,7 @@
 from dependency_injector import containers, providers
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
+# 直接从 settings 导入配置，这是最直接、最可靠的方式
 from src.core.config import settings
 from src.core.prompt_manager import PromptManager
 from src.db.repositories.member_repository import MemberRepository
@@ -30,36 +31,31 @@ class Container(containers.DeclarativeContainer):
     这种方法避免了与 discord.py 扩展系统可能发生的冲突，并使依赖关系更加清晰。
     """
 
-    # --- 1. 核心配置 (Configuration) ---
-    # `config` provider 负责管理从 .env 文件加载的配置。
-    # 它使得所有其他 provider 都可以通过 `config.some_value` 的方式访问配置项。
-    config = providers.Configuration(strict=True)
-    # 在容器类定义时，立即从 settings 对象加载配置。
-    config.from_pydantic(settings)
-
-    # --- 2. 核心与外部客户端 (Clients & Core Components) ---
-    # 这些是独立的、通常与外部 API 或核心功能交互的底层组件。
-    # 它们通常是 Singleton，以保证在整个应用生命周期中只有一个实例。
+    # ------------------- 1. 外部依赖与核心客户端 -------------------
+    # 这一部分定义了与外部世界直接交互的客户端，或者不依赖于本项目其他组件的核心工具。
+    # 它们通常是 Singleton，以保证在整个应用生命周期中只有一个实例，避免重复创建连接或加载模型。
 
     prompt_manager = providers.Singleton(
         PromptManager,
-        # 从配置中读取 prompts 文件夹的路径
-        prompts_dir=config.PROJECT_ROOT.provided / "src" / "prompts",
+        # 【实现说明】: 此处直接使用从 `src.core.config` 模块导入的 `settings` 对象。
+        # 在程序加载时，`settings.PROJECT_ROOT` 已经是一个具体的 pathlib.Path 对象，
+        # 因此可以安全地进行路径拼接操作。
+        prompts_dir=settings.PROJECT_ROOT / "src" / "prompts",
     )
 
     gemini_client = providers.Singleton(
         GeminiClient,
-        api_key=config.GEMINI_API_KEY,
-        model_name=config.GEMINI_MODEL_NAME,
+        api_key=settings.GEMINI_API_KEY,
+        model_name=settings.GEMINI_MODEL_NAME,
     )
 
-    # --- 3. 数据库层 (Database Layer) ---
-    # 负责数据库连接和会话管理。
+    # ------------------- 2. 数据库层 -------------------
+    # 这一部分负责建立和管理与数据库的连接。
 
     db_engine = providers.Singleton(
         create_async_engine,
-        url=config.DATABASE_URL.as_(str),  # 确保 URL 是字符串
-        echo=config.DB_ECHO.as_(bool).optional(),  # echo 是可选配置
+        url=str(settings.DATABASE_URL),  # 确保 URL 是字符串
+        echo=getattr(settings, "DB_ECHO", False),
     )
 
     db_session_factory = providers.Singleton(
@@ -70,22 +66,22 @@ class Container(containers.DeclarativeContainer):
         expire_on_commit=False,
     )
 
-    # --- 4. 数据仓库层 (Repository Layer) ---
-    # 每个 Repository 负责与一个特定的数据模型（表）进行交互。
-    # 它们是 `Factory` 类型，意味着每次请求时都会创建一个新的实例，
-    # 这有助于确保数据库操作的隔离性。
+    # ------------------- 3. 数据仓库层 (Repository) -------------------
+    # Repository 封装了对特定数据表的数据库操作 (CRUD)。
+    # 它们依赖于 `db_session_factory` 来获取数据库会话。
+    # 使用 `Factory` 模式意味着每次请求服务时，都会创建一个新的 Repository 实例。
 
     member_repo = providers.Factory(
         MemberRepository,
         session_factory=db_session_factory,
     )
 
-    # ... 在这里添加其他 Repositories, 例如：
-    # infraction_repo = providers.Factory(...)
+    # ... 在此添加其他 Repository 定义 ...
 
-    # --- 5. 业务服务层 (Service Layer) ---
-    # Service 封装了核心业务逻辑，并编排 Repositories 和其他 Services。
-    # 它们通常也是 `Factory` 类型，以确保每次业务操作都是在一个干净的状态下开始。
+    # ------------------- 4. 业务服务层 (Service) -------------------
+    # Service 包含了核心业务逻辑，并负责编排 Repositories 和其他 Services。
+    # 它们的依赖项（如 `member_repo`）由容器根据上面的定义自动注入。
+    # 同样使用 `Factory` 模式，确保业务操作的独立性。
 
     member_service = providers.Factory(
         MemberService,
@@ -96,12 +92,13 @@ class Container(containers.DeclarativeContainer):
         AIService,
         client=gemini_client,  # <- 注入底层 gemini_client
         prompts=prompt_manager,  # <- 注入 prompt_manager
-        # 如果 AIService 需要其他依赖，在这里继续添加
     )
 
-    # ... 在这里添加其他 Services, 例如：
-    # moderation_service = providers.Factory(
-    #     ModerationService,
-    #     member_repo=member_repo,
-    #     infraction_repo=infraction_repo
-    # )
+    # ... 在此添加其他 Service 定义 ...
+
+    # ------------------- 5. 配置提供者 (可选) -------------------
+    # 【说明】: `dependency-injector` 提供了一个专门的 `Configuration` provider。
+    # 在当前项目中，我们直接使用导入的 `settings` 对象来配置其他 provider，这种方式更直接。
+    # 保留这个 `config` provider 是为了未来可能的扩展，例如在测试中需要动态覆盖 (override) 配置。
+    config = providers.Configuration()
+    config.from_pydantic(settings)
