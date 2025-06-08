@@ -12,5 +12,6 @@ Requires-Dist: fastapi>=0.115.12
 Requires-Dist: google-generativeai>=0.8.5
 Requires-Dist: pydantic>=2.0
 Requires-Dist: pydantic-settings>=2.9.1
+Requires-Dist: pytest>=8.4.0
 Requires-Dist: sqlalchemy>=2.0.41
 Requires-Dist: uvicorn[standard]>=0.34.3
