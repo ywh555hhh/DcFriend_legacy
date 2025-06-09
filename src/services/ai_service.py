@@ -41,9 +41,7 @@ class AIService:
         """如果当前没有激活的角色，则加载默认角色。"""
         if self.active_character is None:
             # 确保在需要时角色信息已经被加载
-            self.active_character = await self.character_manager.load_character(
-                "kanban_musume"
-            )
+            self.active_character = await self.character_manager.load_character("GO")
 
     def _format_example_dialogue(self, character: Character) -> str:
         """格式化角色的示例对话，用于构建 few-shot prompt。"""
