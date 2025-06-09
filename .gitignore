@@ -9,4 +9,3 @@ __pycache__/
 *.db-journal
 # Python build artifacts
 *.egg-info/
-test_*.py
